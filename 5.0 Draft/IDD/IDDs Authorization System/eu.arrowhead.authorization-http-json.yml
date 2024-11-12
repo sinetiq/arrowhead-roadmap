@@ -5,58 +5,24 @@ info:
   description: |
     This specification outlines how to realize the _Arrowhead Core Authorization_ service on top of
     either of the HTTP or HTTPS protocols with payloads encoded in JSON. This service allows for
-    _resource_ ownwers to check _access-rights_ of _subjects_ attempting to perform operations over
-    their protected _resources_. Authorization queries are then made in the form of the _triple_
-    (subject, access-right, resource). In the context of service consumption authorization,
-    service providers act as resource owners for their provideded services (or _resources_), while 
-    consumers are _subjects_ trying to apply their _access right_ to consume a service. For such 
-    application, an authorization query shall look as:
+    _resource_ ownwers to check _access-rights_ of _consumers_ attempting to perform operations over
+    their protected _resources_.
+    
+    This interface understands _resources_ as the entities needing protection, e.g., services, events, etc. On the other 
+    hand, _consumers_ represents the entities trying to access or consume the previously defined _resources_. Finally, _access-rights_ 
+    represents the actions that _subjects_ attempt to performed over the protected _resources_, these can be defined with different levels
+    of granularity, such as service consumption, or read or write of data. 
 
-      subject: "MWtzOXIpaUEsOyEhc1NsTwo="
-      access-right: "consume"
-      resource: "/OutsideTemp"
+    An authorization rule is defined as an object connecting a _consumer_ with a _resource_, specifying in it the _access-rights_ that the rule
+    is managing. An authorization rule can either be a rule granting the specified _access-rights_ or a prohibition, explicitely prohibiting the 
+    specified _access-rights_.  
+
+    Moreover, Authorization rules can be defined over a "Group" of _consumers_. This groups can be seen as whitelists or blacklist, in the case of 
+    prohibitions. This interface provides methods to manage groups, including the creation, addition or removal of participants. 
 
     In the context of this document, we understand an _access-right_ to be a string identifier that
-    names something a subject can request that a certain type of service performs on its behalf. We
-    also understand an _resource_ to be any kind resource that is acted upon while an operation is
-    performed. If, for example, a file storage service is provided, then possible _access-right_ could
-    be `"upload"` and `"download"` while the _resource_ of the service are the files it stores.
-
-    No requirements are imposed on an implementation of this service with regards to how it
-    determines if certain subjects are allowed to perform certain access rights on certain resources.
-    It may implement something akin to the INCITS 565-2020 standard, also known as _Next Generation_
-    _Access Control_ (NGAC), or something much less sophisticated. It is also assumed that the
-    service provider is informed about what authorization requests to approve via some other service
-    than this one.
-
-    ## Caching and Performance
-
-    Implementations of this service _may_ allow for its consumers to cache its authorization
-    decisions for brief periods of time when relevant to improve performance. When it is enabled, it
-    is communicated via the `Cache-Control` header of its responses.
-
-    An individual implementation of this service with sufficiently sophisticated software and
-    hardware should be able to handle up to and beyond hundreds of thousands of authorization
-    triplets per second. That being said, there could be cases where no available hardware is
-    performant enough, or where individual consumers are disconnected from this service for
-    significant periods of time. These use cases are outside the scope of this service.
-
-    ## Compression and Language
-
-    An implementation of this service interface _should_ be designed to support compression and
-    _may_ provide human-readable error texts in different languages than English, as described in
-    [RFC 9110, Section 12](https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation). Not
-    using compression _must_ be supported and _should_ be the default. Also, the default language
-    for error messages _must_ be American English (`en-US`).
-
-    ## Size Limits
-
-    As a mitigation against denial-of-service attacks, all implementations of this service
-    interface _should_ reject incoming requests that are larger than a predefined limit. That limit
-    _must not_ be smaller than 8192 bytes for each received request. An implementation _may_ also
-    limit the sizes of individual parts within each request. It _must_, however, receive request
-    payloads up to 4096 bytes in size. If payload compression is supported, then this limit applies
-    after decompression.
+    names something a consumer can request that a certain type of service performs on its behalf. We
+    also understand an _resource_ to be either a service or an event type available. 
   version: 5.0.0-rc.1
 
 paths:
@@ -69,16 +35,202 @@ paths:
         '200':
           description: OK
 
-  /authorizations:
+  /policy:
     post:
-      summary: Bulk Authorize access rights for Resources
-      description: |
-        Allows for bulk authorization requests to be sent to the authorization system in a single API request
+      summary: A provider can specify one authorization policy, and grant or prohibit a set of access rights to a 
+        consumer or group. 
+      description: Returns the unique id of the newly created authorization policy. 
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: 
+              $ref: "#/components/schemas/Policy"
+      responses:
+        '200':
+          description: Policy successfully created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorization-policy-id:
+                    type: string
+    get: 
+      summary: List Authorization policy
+      description: Retrieve a list of all Authorization policy created by the current provider.
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Policy'
+          headers:
+            Limit:
+              $ref: '#/components/headers/Limit'
 
-        Queries the authorization system for authorization decision for each specified access right over the 
+  /policy/{policyId}:
+    get:
+      summary: Get Authorization policy by ID
+      description: Retrieve details of a specific policy by its identifier.
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+    delete:
+      summary: Delete a specific policy
+      description: Remove a specified policy by its ID. This revokes the permissions specified in the authorization policy. 
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Policy deleted successfully
+        '404':
+          description: Policy not found
+
+  /groups:
+    get:
+      summary: Get all groups
+      description: Retrieve a list of all available groups.
+      responses:
+        '200':
+          description: List of groups retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+
+    post:
+      summary: Create a new group
+      description: Add a new group with an optional initial list of users.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewGroupRequest'
+      responses:
+        '201':
+          description: Group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Invalid input data
+
+  /groups/{groupId}:
+    get:
+      summary: Get a specific group
+      description: Retrieve information about a specified group.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Group retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '404':
+          description: Group not found
+
+    delete:
+      summary: Delete a specific group
+      description: Remove a specified group by its ID.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Group deleted successfully
+        '404':
+          description: Group not found
+
+  /groups/{groupId}/consumers:
+    post:
+      summary: Add a consumer or group to a group
+      description: Add a new or existing consumer or group to the specified group.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Subject'
+      responses:
+        '200':
+          description: User added to the group successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Invalid input data
+        '404':
+          description: Group not found
+
+  /groups/{groupId}/users/{userId}:
+    delete:
+      summary: Remove a consumer or from a group
+      description: Remove a specified consumer or group from the group.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subject removed from group successfully
+        '404':
+          description: Group or user not found
+
+  /validate:
+    post:
+      summary: Validate access rights to a resource
+      description: |
+        Allows for an authorization validation to be sent to the authorization system.
+
+        Queries the authorization system for authorization decision for the specified access right over the 
         specified subject and resource pair. 
 
-        As a reponse, for each request in the request body, an authorization decision will be returned.
+        As a reponse, an authorization decision will be returned.
       requestBody:
         required: true
         content:
@@ -87,23 +239,29 @@ paths:
               $ref: '#/components/schemas/AccessRequests'
               examples:
                 example1:
-                  summary: Three authorization requests from different users to different resources.
+                  summary: Authorization request to consume getTemp service operation in an specified service
                   value:
-                    - subject: "user123"
-                      access-right: "write"
-                      resource: "eu.arrowhead.tempreadings-http-json@MWtzOXIpaUEsOyEhc1NsTwo"
-                    - subject: "MWtzOXIpaUEsOyEhc1NsTwo="
+                      subject: "user123"
                       access-right: "consume"
-                      resource: "/OutsideTemp"
-                    - subject: "user789"
-                      access-right: "read"
-                      resource: "91"
+                      resource: 
+                        service: "eu.arrowhead.tempreadings-http-json@MWtzOXIpaUEsOyEhc1NsTwo"
+                        service-operations: ["getTemp"]
                 example2:
-                  summary: a single authorization request.
-                  value:
-                      subject: "user234"
-                      access-right: "read"
-                      resource: "document4"                  
+                  summary: Authorization request for writing on a service operation
+                  value:  
+                      subject: "MWtzOXIpaUEsOyEhc1NsTwo="
+                      access-right: "write"
+                      resource: 
+                        service: "/OutsideTemp"
+                        service-operations: ["write"]
+                      
+                  example3:
+                    summary: Authorization request to check if a consumer has access to an event-type
+                    value:  
+                        subject: "user789"
+                        access-right: "read"
+                        resource: 
+                          event-type: "motionDetected"
       responses:
         '200':
           description: Successful authorization
@@ -306,35 +464,59 @@ components:
           $ref: '#/components/headers/Retry-After'
 
   schemas:
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the personal group
+        name:
+          type: string
+          description: Name of the personal group
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subject'
+      required:
+        - id
+        - name
+        - subjects
 
-    AccessRequests: 
-      description: An array of authorization Triplets to be submitted to the Authorization system
-      type: array
-      items:
-        $ref: '#/components/schemas/Triplet'
+    NewGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the new group
+        users:
+          type: array
+          description: Initial list of users to add to the group
+          items:
+            $ref: '#/components/schemas/Subject'
+      required:
+        - name
 
-    Address:
+    AccessRequests:
       description: |
-        Identifies a _transport_ and a _location_.
-
-        The _transport_ identifies the base protocol that facilitates addressing a specific service
-        instance. Examples of transports that can be supported are `tcp4`, `tcp6`, `udp4`, `udp6`
-        and `unix`. A protocol only counts as a transport if it both (A) provides a way of
-        addressing and, by extension, sending messages to service providers and consumers, as well
-        as (B) does not build upon another protocol also providing this capability. I other words,
-        TLS and DTLS are _not_ transports, because they build upon the TCP and UDP protocols, which
-        satisfy condition A.
-
-        What the _location_ part consists of depends on what transport is identified. If the
-        transport is `tcp4` or `udp4`, the location is an IPv4 address expressed as four decimal
-        numbers separated by dots, a colon and a port number, such as in `192.168.3.22:64075`. If
-        the transport is `tcp6` or `udp6`, the location is an IPv6 address, rendered as described in
-        [RFC 5952](https://www.rfc-editor.org/rfc/rfc5952), within square brackets, followed by a
-        colon and a port number. If the transport is `unix`, the location is an absolute filesystem
-        path to a Unix socket file.
-      type: string
-      pattern: ^(?<transport>[^:]+):\w*(?<location>.*)$
-      example: tcp4:192.168.0.7:45326
+        Three objects identifying a _consumer_, an _operation_ and an _resource_, in that order.
+        Together they describe how a certain consumer wishes do perform a certain operation on a
+        certain resource.
+      type: object
+      properties:
+        consumer:
+          type: string
+          description: The identifier of the consumer system making the request. The format of the string is 
+            dependant on the Authentication mechanism used. (e.g., a certificate string, token, id, etc)
+        access-right:
+          type: string
+          description: String identifier for the access right needed to be authorized. These access rights
+            must be pre-defined within the policy engine used. ("consume", "read", "write", "delete", "update", etc)
+        resource:
+          $ref: '#/components/schemas/Resource'
+      required:
+        - consumer
+        - access-right
+        - resource
 
     Error:
       description: |
@@ -346,25 +528,66 @@ components:
           description: A human-readable explanation of why the request was rejected.
           type: string
 
-    Triplet:
+    Resource:
       description: |
-        Three strings identifying a _subject_, an _operation_ and an _resource_, in that order.
-        Together they describe how a certain subject wishes do perform a certain operation on a
-        certain resource.
+        Identifier of the resource over which the authorization policy is to be defined. 
+        `Service` represents the unique identifier of the desired service. `Service-operations`refers to the 
+        specific operation within the specified service. This can be a list of service operations. Leaving this 
+        field blank should only grant permission to the Service's ping operation. Finally, the `Event type`shold
+        be used when refering to events.
       type: object
       properties:
-        subject:
+        service: 
           type: string
-          description: The identifier of the entity making the request. The format of the string is 
-            dependant on the Authentication mechanism used. (e.g., a certificate string, token, id, etc)
-        access-right:
+        service-operations: 
+          type: array
+          items:
+            type: string
+        event-type:
           type: string
-          description: String identifier for the access right needed to be authorized. These access rights
-            must be pre-defined within the policy engine used. ("consume", "read", "write", "delete", "update", etc)
-        resource:
+    
+    Policy:
+      description: |
+        An object containing the relevant information for the creation of an authorization rule. 
+        The authorization rule contains 3 main parameters: _consumer_, _operation_ and _resource_, where the resource 
+        refers to the service and service operations that are relevant to the authorization rule. Moreover, this 
+        permission can be either a grant operation or a prohibition. In other words, a grant authorization rule can 
+        add the consumer to the whitelist of consumers that have access to the specified resource. On the other hand,
+        a prohibition authorization rule adds that same consumer to the blacklist for the specified resource. 
+      type: object
+      properties:
+        resource: 
+          $ref: '#/components/schemas/Resource'
+        operation: 
+          type: array
+          items: 
+            type: string
+        subject-id: 
           type: string
-          description: The identifier of the resource being accessed, e.g., service instance identifier. 
+        permission-type:
+          type: string
+          enum:
+            - grant
+            - prohibit
+
+    Subject:
+      description: |
+        This object contains information about the consumer system, or a personal group. When refering to 
+        a `Subject` of subject-type _consumer_, a unique identifier for the consumer system should be provided.
+        When refering to a subject-type _group_, the identifier of a previously defined personal group should 
+        be provided. 
+      type: object
+      properties:
+        subject-type: 
+          type: string
+          enum:
+            - consumer
+            - group
+        subject-id:
+          type: string
       required:
-        - subject
-        - access-right
-        - resource
+        - subject-type
+        - subject-id
+    
+    
+   

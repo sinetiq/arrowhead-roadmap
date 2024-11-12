@@ -11,33 +11,24 @@ info:
     definition is designed to allow for Attribute-based Access Control to be enforced in the Authorization system. However, the same 
     definition can be used to describe and manage role-based or rule-based policies by the flexible use of associations and permissions. 
 
-    This interface understands _resources_ as the entities needing protection, e.g., services, data-bases, files, etc. On the other 
-    hand, _subjects_ represents the entities trying to access or consume the previously defined _resources_. Finally, _access-rights_ 
+    This interface understands _resources_ as the entities needing protection, e.g., services, events, etc. On the other 
+    hand, _consumers_ represents the entities trying to access or consume the previously defined _resources_. Finally, _access-rights_ 
     represents the actions that _subjects_ attempt to performed over the protected _resources_, these can be defined with different levels
-    of granularity, such as service consumption, or read or write of data. Moreover, this interface definition understands _attributes_ as
-    characteristics from users or resources to which policies can be defined. These properties describe the relevant entities and are mainly 
-    of two types: User Attributes and Object Attributes. User attributes describe the entities trying to access resources. These can be 
-    characteristics such as roles, clearance levels, job title, etc. Moreove, object attributes describe the properties of the resources being
-    accessed and protected. These properties can be such as data classifications, sensitivity levels, file type, location, source, etc. 
-    As an example, one can set attributes to behave as roles, e.g., the user 'Alice' can be assigned to the 'IT staff' attribute, while the
-    devices 'TempSensor1' and 'TempSensor2' are both assigned to the 'Sensor data' attribute. If a policy connects the User Attribute 'IT staff' 
-    with the object attribute 'Sensor data', then Alice will be able to consume data from both Temperature sensors. 
+    of granularity, such as service consumption, or read or write of data. 
 
-    To express authorization policies over resources needing protection, a _resource_ object must be created in the policy engine. This 
-    newly created resource can be _associated_ to existing attributes using the _/management/associations_ endpoint. The same applies
-    whenever a new _subject_ wanting to consume a _resource_ enters to the environment. A _subject_ object must be created in the policy
-    engine, and it needs to be connected to an attribute using the _/management/associations_ endpoint. This association will connect
-    the newly created _resource_ or _subject_ to existing authorization policies. 
+    An authorization rule is defined as an object connecting a _consumer_ with a _resource_, specifying in it the _access-rights_ that the rule
+    is managing. An authorization rule can either be a rule granting the specified _access-rights_ or a prohibition, explicitely prohibiting the 
+    specified _access-rights_.  
 
-    Connections between _User Attributes_ and _Object Attributes_ are made through the creation of _permissions_ by using the 
-    _/management/permissions_ endpoint. Creating a permission means that the _User Attribute_ get permission for the specified _access-rights_ 
-    to be executed on the specified _resource attribute_. This means, for example, if a permission using the user attribute 'IT staff' with the
-    _access-rights_ 
+    Moreover, Authorization rules can be defined over a "Group" of _consumers_. This groups can be seen as whitelists or blacklist, in the case of 
+    prohibitions. This interface provides methods to manage groups, including the creation, addition or removal of participants. 
 
+    Finally, this interface provides mechanisms for bulk authorization of both services or events. These methods can be used to filter the available
+    providers of a given system, or the authorized subscribers for a given event type.  
 
   version: 1.0.0
-
 paths:
+
   /ping:
     get:  
       summary: Endpoint to check the core system availability. 
@@ -46,62 +37,95 @@ paths:
         '200':
           description: OK
 
-  /management/associations:
+  /policies:
     post:
-      summary: Create a New association
-      description: Create a new association relating resources to resource-attributes, subjects to 
-        subject attributes, or attribute-attribute associations. 
-        The resource or subject must be an existing object. The specified attribute can be one existing from the 
-        attributes collection, or if a non-existant attribute is specified, the new attribute will be created in 
-        the collection. 
+      summary: Management version of policy endpoint, used to create policies in bulk, which grant or prohibit a set of access rights to a 
+        consumer or group. 
+      description: Returns the unique id of each of the newly created authorization policies. 
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Association' 
-            examples: 
-              example1:
-                summary: A call to associate a Temperature sensor service to the existing "OutsideTemp" resource attribute. 
-                value: 
-                  id: "123123"
-                  association-type: "resource"
-                  target:
-                    id: "existing-resource123"
-                    name: "eu.arrowhead.tempreadings-http-json"
-                  attribute:
-                    id: "existing-attribute1233"
-                    name: "OutsideTemp"
-                    attribute-type: "resource"
-      responses:
-        '201':
-          description: Association created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Association'
-    get:
-      summary: List Associations
-      description: Retrieve a lizst of all associations.
+              type: array
+              items: 
+                $ref: "#/components/schemas/Policy"
       responses:
         '200':
-          description: Successful operation
+          description: Policies successfully created
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Association'
-          headers:
-            Limit:
-              $ref: '#/components/headers/Limit'
-
-  /management/associations/{associationId}:
+                  type: object
+                  properties:
+                    authorization-policy-id:
+                      type: string
     get:
-      summary: Get Policy by ID
+      summary: Retrieve a list of policies with optional filters and pagination
+      parameters:
+        # Filtering parameters
+        - name: provider
+          in: query
+          description: Filter by provider
+          required: false
+          schema:
+            type: string
+        - name: consumer
+          in: query
+          description: Filter by consumer or group
+          required: false
+          schema:
+            type: string
+        - name: resource
+          in: query
+          description: Filter by resource
+          required: false
+          schema:
+            type: string
+        # Pagination parameters
+        - name: limit
+          in: query
+          description: Maximum number of policies to return per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: offset
+          in: query
+          description: Number of policies to skip before starting to return results
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A list of policies with pagination and filtering support
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Policy'
+                  totalCount:
+                    type: integer
+                    description: Total number of policies available after applying filters
+                  limit:
+                    type: integer
+                    description: Maximum
+
+  /policy/{policyId}:
+    get:
+      summary: Get Authorization policy by ID
       description: Retrieve details of a specific policy by its identifier.
       parameters:
-        - name: associationId
+        - name: policyId
           in: path
           required: true
           schema:
@@ -112,471 +136,583 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Association'
-    put:
-      summary: Update Association
-      description: Update an existing Association by its identifier.
-      parameters:
-        - name: associationId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Association'
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Association'
+                $ref: '#/components/schemas/Policy'
     delete:
-      summary: Delete Association
-      description: Delete an Association by its identifier.
+      summary: Delete a specific policy
+      description: Remove a specified policy by its ID. This revokes the permissions specified in the authorization policy. 
       parameters:
-        - name: associationId
+        - name: policyId
           in: path
           required: true
           schema:
             type: string
       responses:
         '204':
-          description: No content
-  
-  /management/permissions: 
+          description: Policy deleted successfully
+        '404':
+          description: Policy not found
+
+  /groups:
+    get:
+      summary: Get all groups
+      description: Retrieve a list of all available groups.
+      responses:
+        '200':
+          description: List of groups retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+
     post:
-      summary: Grant a new set of permissions.
-      description: Create a new set of permissions between a resource-attributes and a subject-attribute specified in the 
-        request body. 
+      summary: Create a new group
+      description: Add a new group with an optional initial list of users.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Permission' 
-            examples:
-              example1:
-                summary: A call to derive "consume" privileges for the subject attribute "TempController" to the 
-                  resource attribute "OutsideTemp". 
-                value:
-                  id: "321654"
-                  subject-attribute:
-                    id: "someid123" 
-                    name: "TempController"
-                    attribute-type: "subject"
-                  access-rights:
-                    - "consume"
-                  resource-attribute:
-                    id: "existing-attribute1233"
-                    name: "OutsideTemp"
-                    attribute-type: "resource"
+              $ref: '#/components/schemas/NewGroupRequest'
       responses:
         '201':
-          description: Permission created successfully
+          description: Group created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Permission'
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Invalid input data
 
+  /groups/{groupId}:
     get:
-      summary: List Permissions
-      description: Retrieve a list of all Permissions.
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Permission'
-          headers:
-            Limit:
-              $ref: '#/components/headers/Limit'
-  /management/permissions/{permissionId}:
-    get:
-      summary: Get permission by ID
-      description: Retrieve details of a specific permission by its identifier.
+      summary: Get a specific group
+      description: Retrieve information about a specified group.
       parameters:
-        - name: permissionId
+        - name: groupId
           in: path
           required: true
           schema:
             type: string
       responses:
         '200':
-          description: Successful operation
+          description: Group retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Permission'
-    put:
-      summary: Update Permission
-      description: Update an existing permission by its identifier.
-      parameters:
-        - name: permissionId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Permission'
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Permission'
+                $ref: '#/components/schemas/Group'
+        '404':
+          description: Group not found
+
     delete:
-      summary: Delete Permission
-      description: Delete a permission by its identifier.
+      summary: Delete a specific group
+      description: Remove a specified group by its ID.
       parameters:
-        - name: permissionId
+        - name: groupId
           in: path
           required: true
           schema:
             type: string
       responses:
         '204':
-          description: No content
+          description: Group deleted successfully
+        '404':
+          description: Group not found
 
-  /management/subjects:
-    get:
-      summary: List subjects
-      description: Retrieve a list of all subjects.
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Subject'
-          headers:
-            Limit:
-              $ref: '#/components/headers/Limit'
-  /management/subjects/{subjectId}:
-    get:
-      summary: Get Subject by ID
-      description: Retrieve details of a specific subject by its identifier.
-      parameters: 
-        - name: subjectId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Subject'
-    delete:
-      summary: Delete subject
-      description: Delete a subject by its identifier. 
-      parameters:
-        - name: subjectId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: No content
-  /management/resources:
-    get:
-      summary: List resources
-      description: Retrieve a list of all resources.
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Resource'
-          headers:
-            Limit:
-              $ref: '#/components/headers/Limit'
+  /groups/{groupId}/consumers:
     post:
-      summary: Create a new resource
-      description: Create a new resource to be the target of authorization rules. 
+      summary: Add a consumer or group to a group
+      description: Add a new or existing consumer or group to the specified group.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/Subject'
       responses:
-        '201':
-          description: Resource created successfully
+        '200':
+          description: User added to the group successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Invalid input data
+        '404':
+          description: Group not found
 
-  /management/resources/{resourceId}:
-    get:
-      summary: Get resources by ID
-      description: Retrieve details of a specific resource by its identifier.
-      parameters: 
-        - name: resourceId
+  /groups/{groupId}/users/{userId}:
+    delete:
+      summary: Remove a consumer or from a group
+      description: Remove a specified consumer or group from the group.
+      parameters:
+        - name: groupId
           in: path
           required: true
           schema:
             type: string
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Resource'
-    delete:
-      summary: Delete resource.
-      description: Delete a resource by its identifier. 
-      parameters:
-        - name: resourceId
+        - name: userId
           in: path
           required: true
           schema:
             type: string
       responses:
         '204':
-          description: No content
- 
-  /management/user-attributes:
-    get:
-      summary: List user attributes
-      description: Retrieve a list of all user attributes.
+          description: Subject removed from group successfully
+        '404':
+          description: Group or user not found
+
+  /validate/service:
+    post:
+      summary: Validate access rights from a consumer to a resource provided by a list of Providers. 
+      description: |
+        Allows for an authorization validation to be sent to the authorization system.
+
+        Queries the authorization system for authorization decision for the specified access right over the 
+        specified consumer and resource pair.
+
+        A list of possible providers can be used as part of the input. This service will return the
+        filtered list of providers to which the consumer has access to.  
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationService'
+              examples:
+                example1:
+                  summary: Authorization request to consume getTemp service operation in an specified service
+                  value:
+                    ValidationService:
+                      AccessRequestInput:
+                        subject: "user123"
+                        access-right: "consume"
+                        resource: 
+                          service: "eu.arrowhead.tempreadings-http-json@MWtzOXIpaUEsOyEhc1NsTwo"
+                          service-operations: ["getTemp"]
+                      Providers: ["MWtzOXIwo", "001", "TempSensor01"]
       responses:
         '200':
-          description: Successful operation
+          description: Successful authorization
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Attribute'
+                type: object
+                properties:
+                  authorizedProviders:
+                    type: array
+                    items:
+                      type: string
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
             Limit:
               $ref: '#/components/headers/Limit'
-  /management/user-attributes/{uaId}:
-    get:
-      summary: Get user attribute by ID
-      description: Retrieve details of a specific user attribute by its identifier.
-      parameters: 
-        - name: uaId
-          in: path
-          required: true
-          schema:
-            type: string
+        '400': { $ref: '#/components/responses/400-BadRequest' }
+        '401': { $ref: '#/components/responses/401-Unauthorized' }
+        '403': { $ref: '#/components/responses/403-Forbidden' }
+        '406': { $ref: '#/components/responses/406-NotAcceptable' }
+        '408': { $ref: '#/components/responses/408-RequestTimeout' }
+        '411': { $ref: '#/components/responses/411-LengthRequired' }
+        '413': { $ref: '#/components/responses/413-PayloadTooLarge' }
+        '414': { $ref: '#/components/responses/414-URITooLarge' }
+        '415': { $ref: '#/components/responses/415-UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/429-TooManyRequests' }
+        '431': { $ref: '#/components/responses/431-RequestHeaderFieldsTooLarge' }
+        '500': { $ref: '#/components/responses/500-InternalServerError' }
+        '503': { $ref: '#/components/responses/503-ServiceUnavailable' }
+
+  /validate/event:
+    post:
+      summary: Validate access rights of a list of subscribers over the specified publisher
+      description: |
+        Accepts a publisher, event type and a list of subscribers and returns a filtered subscribers 
+        list, based on the available authorization rules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationService'
       responses:
         '200':
-          description: Successful operation
+          description: Successful authorization
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Attribute'
-    delete:
-      summary: Delete user attribute.
-      description: Delete an user attribute by its identifier. 
-      parameters:
-        - name: uaId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: No content
-  /management/object-attributes:
-    get:
-      summary: List object attributes
-      description: Retrieve a list of all object attributes.
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Attribute'
+                type: object
+                properties:
+                  authorizedSubscribers:
+                    type: array
+                    items:
+                      type: string
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
             Limit:
               $ref: '#/components/headers/Limit'
-  /management/object-attributes/{oaId}:
-    get:
-      summary: Get user object by ID
-      description: Retrieve details of a specific object attribute by its identifier.
-      parameters: 
-        - name: oaId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Attribute'
-    delete:
-      summary: Delete object attribute.
-      description: Delete an object attribute by its identifier. 
-      parameters:
-        - name: oaId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: No content
+        '400': { $ref: '#/components/responses/400-BadRequest' }
+        '401': { $ref: '#/components/responses/401-Unauthorized' }
+        '403': { $ref: '#/components/responses/403-Forbidden' }
+        '406': { $ref: '#/components/responses/406-NotAcceptable' }
+        '408': { $ref: '#/components/responses/408-RequestTimeout' }
+        '411': { $ref: '#/components/responses/411-LengthRequired' }
+        '413': { $ref: '#/components/responses/413-PayloadTooLarge' }
+        '414': { $ref: '#/components/responses/414-URITooLarge' }
+        '415': { $ref: '#/components/responses/415-UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/429-TooManyRequests' }
+        '431': { $ref: '#/components/responses/431-RequestHeaderFieldsTooLarge' }
+        '500': { $ref: '#/components/responses/500-InternalServerError' }
+        '503': { $ref: '#/components/responses/503-ServiceUnavailable' }
+        
+                            
+                  
 
+
+                    
 
 components:
+
   headers:
+
+    Cache-Control:
+      description: |
+        If present, the value of this header may only include the `max-age`, `must-revalidate` and
+        `no-store` response directives, all of which are defined in
+        [RFC 9111 Section 5.2.2](https://datatracker.ietf.org/doc/html/rfc9111#name-response-directives).
+
+        The `max-age` directive indicates for how many seconds the decision in the response may be
+        cached before being requested again by the subject. The `must-revalidate` directive is used
+        to forbid the subject from using the decision after the `max-age` has expired and the
+        attempt to request it again failed. The `no-store` directive instructs the subject not to
+        cache the decision at all.
+      schema:
+        type: string
+      example: max-age=10, must-revalidate
+      required: false
+
     Limit:
       description: |
-        An indication of the maximum number of records the consuming system is allowed to have
-        included in the response to its query.
+        An indication of the maximum number of triplets the consuming system is allowed to include
+        in its request.
       schema:
         type: number
         format: int32
         minimum: 0
       required: true
 
+    Retry-After:
+      description: |
+        An indication, in seconds, of how long a subject is to wait before attempting the failed
+        request again.
+      schema:
+        type: number
+        format: int32
+        minimum: 1
+      required: true
+
+  responses:
+
+    400-BadRequest:
+      description: |
+        Invalid authorization basis submitted in request for an authorization decision.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    401-Unauthorized:
+      description: |
+        Consumer not yet authorized.
+
+        The kind of authorization required _may_ be named in the error response.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    403-Forbidden:
+      description: |
+        Consumer is authorized, but lacks permission.
+
+        If a particular parameter is the cause of this error, it will be named in the payload of the
+        error response.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    406-NotAcceptable:
+      description: |
+        A request contains either of the `Accept`, `Accept-Encoding` or `Accept-Language` headers,
+        and they do not allow for the service provider to respond using `application/json` as
+        `Content-Type` or with an encoding or language that the service provider supports.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    408-RequestTimeout:
+      description: |
+        A request did not arrive in full within an arbitrary timeout decided by the provider of this
+        service interface.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    411-LengthRequired:
+      description: |
+        The `Content-Length` header is missing in the request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    413-PayloadTooLarge:
+      description: |
+        The payload in the request exceeds the size limit imposed by the service provider.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    414-URITooLarge:
+      description: |
+        The size of the request line in the request, which includes the HTTP version, method and
+        URI, exceeds the limit imposed by the service provider.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    415-UnsupportedMediaType:
+      description: |
+        The request includes a payload encoded using a `Content-Type` unsupported by the service
+        provider.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    429-TooManyRequests:
+      description: |
+        The consumer has sent too many request in a too short time span. The consumer is expected to
+        wait the amount of time indicated in the `Retry-After` header before trying again.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+
+    431-RequestHeaderFieldsTooLarge:
+      description: |
+        The headers section in the request exceeds the limit imposed by the service provider. This
+        response code may indicate that
+
+        1. either the name or value of a field is too large,
+        2. the combination of name and value in a field is too large, or
+        3. the complete header section is too large.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    500-InternalServerError:
+      description: |
+        The server encountered an unexpected condition that prevented it from fulfilling the
+        request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    503-ServiceUnavailable:
+      description: |
+        The service provider is currently near its operating capacity or is undergoing maintenance.
+        The consumer is expected to wait before trying again, as indicated by the `Retry-After`
+        header in the response.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Retry-After'
+
   schemas:
-
-    Association:
-      oneOf:
-        - $ref: "#/components/schemas/ResourceAttributeAssociation"
-        - $ref: "#/components/schemas/SubjectAttributeAssociation"
-        - $ref: "#/components/schemas/AttributeAttributeAssociation"
-
-    ResourceAttributeAssociation:
+    Group:
       type: object
-      properties:
-        resource:
-          $ref: '#/components/schemas/Resource'
-        attribute:
-          $ref: '#/components/schemas/Attribute'
-      required:
-        - resource
-        - attribute
-
-    SubjectAttributeAssociation:
-      type: object
-      properties:
-        subject:
-          $ref: '#/components/schemas/Subject'
-        attribute:
-          $ref: '#/components/schemas/Attribute'
-      required:
-        - subject
-        - attribute
-
-    AttributeAttributeAssociation:
-      type: object
-      properties:
-        attribute1:
-          $ref: '#/components/schemas/Attribute'
-        attribute2:
-          $ref: '#/components/schemas/Attribute'
-      required:
-        - attribute1
-        - attribute2
-
-    Attribute: 
-      type: object
-      required:
-        - id
-        - name
-        - Attribute-type
       properties:
         id:
           type: string
-          description: The unique identifier of the attribute
+          description: Unique identifier of the personal group
         name:
           type: string
-          description: The human-readable name of the attribute
-        Attribute-type:
-          type: string
-          enum: ['user', 'object']
-          description: Type of the Attribute, 'user' for subject attributes (or roles), 'object' for resource attributes. 
-        metadata: { $ref: '#/components/schemas/Metadata' }
-    
-    Metadata:
-      description: |
-        Additional details of when creating a policy element. What metadata is made available
-        depends on the type of the service holding the metadata. Possible examples of metadata are
-        HTTP base paths, message size restrictions and caching directives.
-      type: object
-      example: {"basePath":"v2"}
-
-    Subject:
-      type: object
+          description: Name of the personal group
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subject'
       required:
         - id
         - name
-      properties: 
-        id: 
-          type: string
-          description: The unique identifier of the subject
-        name: 
-          type: string
-          description: The human-readable name of the subject
-        auth-info:
-          type: string
-          description: Authentication information in case needed. E.g., certificate information of consuming systems.
-        metadata: { $ref: '#/components/schemas/Metadata' }
-    
-    Permission:
+        - subjects
+
+    NewGroupRequest:
       type: object
       properties:
-        id:
+        name:
           type: string
-          description: "Identifier of the permission"
-        subjectAttribute:
-          $ref: "#/components/schemas/Attribute"
-        accessRights:
+          description: Name of the new group
+        users:
+          type: array
+          description: Initial list of users to add to the group
+          items:
+            $ref: '#/components/schemas/Subject'
+      required:
+        - name
+
+    AccessRequests:
+      description: |
+        Three objects identifying a _consumer_, an _operation_ and an _resource_, in that order.
+        Together they describe how a certain consumer wishes do perform a certain operation on a
+        certain resource.
+      type: object
+      properties:
+        consumer:
+          type: string
+          description: The identifier of the consumer system making the request. The format of the string is 
+            dependant on the Authentication mechanism used. (e.g., a certificate string, token, id, etc)
+        access-right:
+          type: string
+          description: String identifier for the access right needed to be authorized. These access rights
+            must be pre-defined within the policy engine used. ("consume", "read", "write", "delete", "update", etc)
+        resource:
+          $ref: '#/components/schemas/Resource'
+      required:
+        - consumer
+        - access-right
+        - resource
+
+    EventPublished:
+      description: |
+        An object containing information of a publisher and one of its published event types. 
+      type: object
+      properties:
+        publisher: 
+          type: string
+          description: The identifier of the publisher. The format of the string is dependant on
+            the Authentication mechanism used. (e.g., a certificate string, token, id, etc)
+        event-type:
+          $ref: '#/components/schemas/Resource'
+      required:
+        - publisher
+        - event-type
+
+
+    ValidationService:
+      description: |
+        An object containing an Access request and a list of providers. This is to be used in the
+        Validate service, in which a filtered list of authorized providers will be return given the 
+        consumer and resource contained in the AccessRequest object. 
+      type: object
+      properties:
+        AccessRequestInput:
+          $ref: '#/components/schemas/AccessRequests'
+        Providers:
+          type: array
+          description: A list of providers to be filtered. 
+          items: 
+            type: string
+            description: The identifier of the provider system. The format of the string is dependant on
+              the Authentication mechanism used. (e.g., a certificate string, token, id, etc)
+
+    ValidationEvent:
+      description: |
+        An object containing the information of a published event by a publisher and a list of subscribers.
+        This is to be used in the Validate event service. 
+      type: object
+      properties:
+        EventPublished:
+          $ref: '#/components/schemas/EventPublished'
+        subscribers:
+          type: array
+          description: A list of subscribers to be filtered
+          items: 
+            type: string
+            description: The identifier of the subscriber system. The format of the string is dependant on
+              the Authentication mechanism used. (e.g., a certificate string, token, id, etc)
+
+    Error:
+      description: |
+        An indication of why a received request was rejected. It is formulated with the assumption
+        that the subject knows of and can interpret the status code in the response.
+      type: object
+      properties:
+        message:
+          description: A human-readable explanation of why the request was rejected.
+          type: string
+
+    Resource:
+      description: |
+        Identifier of the resource over which the authorization policy is to be defined. 
+        `Service` represents the unique identifier of the desired service. `Service-operations`refers to the 
+        specific operation within the specified service. This can be a list of service operations. Leaving this 
+        field blank should only grant permission to the Service's ping operation. Finally, the `Event type`shold
+        be used when refering to events.
+      type: object
+      properties:
+        service: 
+          type: string
+        service-operations: 
           type: array
           items:
             type: string
-            description: "Access rights, e.g., ['consume']"
-          description: "List of access rights"
-        resourceAttribute:
-          $ref: "#/components/schemas/Attribute"
-      required:
-        - id
-        - subjectAttribute
-        - accessRights
+        event-type:
+          type: string
 
-    Resource:
-      required: 
-        - id
-        - name
+    Policy:
+      description: |
+        An object containing the relevant information for the creation of an authorization rule. 
+        The authorization rule contains 3 main parameters: _consumer_, _operation_ and _resource_, where the resource 
+        refers to the service and service operations that are relevant to the authorization rule. Moreover, this 
+        permission can be either a grant operation or a prohibition. In other words, a grant authorization rule can 
+        add the consumer to the whitelist of consumers that have access to the specified resource. On the other hand,
+        a prohibition authorization rule adds that same consumer to the blacklist for the specified resource. 
       type: object
       properties:
-        id:
+        provider:
           type: string
-          description: the unique identifier of the resource
-        name: 
+        resource: 
+          $ref: '#/components/schemas/Resource'
+        operation: 
+          type: array
+          items: 
+            type: string
+        subject-id: 
           type: string
-          description: the human-readable name of the resource
-        auth-info:
+        permission-type:
           type: string
-          description: Authentication information in case needed. E.g., certificate information of providing systems.
-        metadata: { $ref: '#/components/schemas/Metadata' }
+          enum:
+            - grant
+            - prohibit
+
+    Subject:
+      description: |
+        This object contains information about the consumer system, or a personal group. When refering to 
+        a `Subject` of subject-type _consumer_, a unique identifier for the consumer system should be provided.
+        When refering to a subject-type _group_, the identifier of a previously defined personal group should 
+        be provided. 
+      type: object
+      properties:
+        subject-type: 
+          type: string
+          enum:
+            - consumer
+            - group
+        subject-id:
+          type: string
+      required:
+        - subject-type
+        - subject-id
+    
+    
+   
